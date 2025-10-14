@@ -1,0 +1,17 @@
+add_executable(syzygy_mipi)
+
+pico_enable_stdio_uart(syzygy_mipi 1)
+pico_enable_stdio_usb(syzygy_mipi 1)
+
+target_compile_options(syzygy_mipi PRIVATE -Wall)
+
+target_sources(syzygy_mipi PRIVATE
+        syzygy_mipi.c
+        syzygy_dna.c
+        i2c_muxer.c
+        gpio_expander.c
+        dna_blob.c
+        )
+
+target_link_libraries(syzygy_mipi  PRIVATE i2c_slave pico_stdlib hardware_pio hardware_adc hardware_i2c hardware_gpio)
+pico_add_extra_outputs(syzygy_mipi)
