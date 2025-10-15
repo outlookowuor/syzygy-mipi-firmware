@@ -6,24 +6,22 @@
 
 #include "hardware/pio.h"
 #include "pio_i2c.h" 
-
 #include "syzygy_mipi.h"
-
 #include "i2c_muxer.h"
+#include "i2c_multi.h"
 
 
 /**
- * i2c muxer imitates a TCA9544A I2C multiplexer with 3 channels
+ * i2c muxer attempts imitates a TCA9544A I2C multiplexer with 3 channels
  * 
+ * Using multi-slave i2c on pio1 as the slave interface to the
+ * like taca9544a, it accepts a single byte to select one of 3 downstream
  * 
- * Create 3 x I2C controllers using PIO and management buffers
- * Is it multiplexing or simply shuffling between multiple I2C controllers?
+ * Create 3 x I2C controllers using PIO 
  * 
  * When BYPASSn is High, 
  * Data (byte?, SDA wire state?) from the host i2c (slave) is relayed (buffered?
  * PIO code ?) to the currently "active"/"selected" master I2C (on to its slave)
- * 
- * Need to think through the return path. 
  * 
  */
 
@@ -59,9 +57,11 @@ void test_bus_slaves(void);
 
 static int active_bus_idx = 0; // default bus 0
 
+
+
 int setup_i2c_muxer() {
 
-    // Initialize the I2C muxer slave interface
+    // Initialize the I2C muxer slave multi interface
     init_muxer_i2c();
     printf("I2C slave ready at 0x%02X\n", MUXER_ADDRESS);
 
@@ -78,123 +78,9 @@ int setup_i2c_muxer() {
 
 
 
-#define CMD_SELECT  0x00
-#define CMD_WRITE   0x01
-#define CMD_READ    0x02
-
-#define MAX_BUF 64
-
-static uint8_t rx_buf[MAX_BUF];
-static int rx_len = 0;
-
-static uint8_t tx_buf[MAX_BUF];
-static int tx_len = 0;
-static int tx_index = 0;
-
-
-void test_bus_slaves(){
-    // probe all three buses
-    uint8_t reg = 0x00, val = 0;
-    for (int bus = 0; bus < NUM_CHANNELS; bus++) {
-        int slave_addr = buses[bus].slave_addr;
-        printf("Testing bus %d: Address %d:  \n", bus, slave_addr);
-        if (slave_addr == 0xFF || slave_addr == 0) {
-            printf("  Skipping %d: no devices to test\n", bus);
-            continue;
-        }
-        if (downstream_i2c_write(bus, slave_addr, &reg, 1) &&
-            downstream_i2c_read(bus, slave_addr, &val, 1)) {
-            printf("  Bus %d: device 0x68 responded, val=0x%02X\n", bus, val);
-        } else {
-            printf("  Bus %d: no response or read failed\n", bus);
-        }
-    }
-}
-static void init_muxer_i2c() {
-    gpio_init(MUXER_I2C_SDA_PIN);
-    gpio_set_function(MUXER_I2C_SDA_PIN, GPIO_FUNC_I2C);
-    gpio_pull_up(MUXER_I2C_SDA_PIN);
-
-    gpio_init(MUXER_I2C_SCL_PIN);
-    gpio_set_function(MUXER_I2C_SCL_PIN, GPIO_FUNC_I2C);
-    gpio_pull_up(MUXER_I2C_SCL_PIN);
-
-    i2c_init(i2c1, I2C_BAUDRATE);
-    // configure I2C0 for slave mode
-    
-    i2c_slave_init(i2c1, MUXER_ADDRESS, &i2c_slave_handler);
-}
-
-/*
-Implementation of command-driven muxing
-| Byte | Meaning                                                                                                |
-| ---- | ------------------------------------------------------------------------------------------------------ |
-| 0x00 | Set active downstream bus (bits 0–2 mask)                                                              |
-| 0x01 | Write transaction: `[0x01, bus, addr, len, data…]`                                                     |
-| 0x02 | Read transaction: `[0x02, bus, addr, len]` followed by a master read from 0x70 to get `len` bytes back |
-*/
-
-static void i2c_slave_handler(i2c_inst_t *i2c, i2c_slave_event_t event) {
-    switch (event) {
-    case I2C_SLAVE_RECEIVE: // master has written some data
-        if (rx_len < MAX_BUF)
-                rx_buf[rx_len++] = i2c_read_byte(i2c);
-            break;
-        break;
-        
-    case I2C_SLAVE_REQUEST: // master is requesting data
-        if (tx_index < tx_len)
-            i2c_write_byte(i2c, tx_buf[tx_index++]);
-        else
-            i2c_write_byte(i2c, 0xFF); 
-        break;
-    case I2C_SLAVE_FINISH: // master has signalled Stop / Restart
-        if (rx_len == 0) break;
-
-        uint8_t cmd = rx_buf[0];
-        switch (cmd) {
-            case CMD_SELECT:
-                if (rx_len > 1) {
-                    active_bus_idx = rx_buf[1];
-                    printf("Bus selected: %u\n", active_bus);
-                }
-                break;
-
-            case CMD_WRITE:
-                if (rx_len >= 4) {
-                    uint8_t bus = rx_buf[1];
-                    uint8_t addr = rx_buf[2];
-                    uint8_t len = rx_buf[3];
-                    downstream_i2c_write(bus, addr, &rx_buf[4], len);
-                    printf("Wrote %dB to 0x%02X on bus%d\n", len, addr, bus);
-                }
-                break;
-
-            case CMD_READ:
-                if (rx_len >= 4) {
-                    uint8_t bus = rx_buf[1];
-                    uint8_t addr = rx_buf[2];
-                    uint8_t len = rx_buf[3];
-                    tx_len = downstream_i2c_read(bus, addr, tx_buf, len);
-                    tx_index = 0;
-                    printf("Prepared %dB read from 0x%02X on bus%d\n", tx_len, addr, bus);
-                }
-                break;
-
-            default:
-                printf("Unknown CMD 0x%02X\n", cmd);
-                break;
-        }
-        rx_len = 0;
-
-        break;
-    default:
-        break;
-    }
-}
-
-
-
+/**
+ * Downstream I2C controllers using PIO
+ */
 typedef struct {
     PIO pio;
     uint sm;
@@ -206,6 +92,65 @@ typedef struct {
 } pio_i2c_bus_t;
 
 static pio_i2c_bus_t buses[NUM_CHANNELS] = {0};
+
+
+PIO pio = pio1; //pio0 used for the downstream i2c controllers
+uint pin = MUXER_I2C_SDA_PIN;
+uint8_t buffer[64] = {0};
+
+bool muxer_conversation_in_progress = false;
+
+ 
+
+void i2c_receive_handler(uint8_t data, bool is_address);
+void i2c_request_handler(uint8_t address);
+void i2c_stop_handler(uint8_t length);
+
+
+void  init_muxer_i2c() {
+    stdio_init_all();
+    i2c_multi_init(pio, pin);
+    i2c_multi_enable_all_addresses();
+    i2c_multi_set_receive_handler(i2c_receive_handler);
+    i2c_multi_set_request_handler(i2c_request_handler);
+    i2c_multi_set_stop_handler(i2c_stop_handler);
+    i2c_multi_set_write_buffer(buffer);
+}
+
+void i2c_receive_handler(uint8_t data, bool is_address) {
+    if (is_address  & data==MUXER_ADDRESS) {
+        muxer_conversation_in_progress = true;
+        return;
+    }      
+    if (muxer_conversation_in_progress == true){
+        //just one byte to select active bus
+        active_bus_idx = data & 0x03; // only 3 channels
+        active_channel_mask = 1 << active_bus_idx;
+        //end the muxer conversation
+        muxer_conversation_in_progress = false;
+        return;
+    }  
+    // treat as a write to slave address
+    downstream_i2c_write(active_bus_idx, data, NULL, 0); 
+}
+
+void i2c_request_handler(uint8_t address) {
+    // treat as a read from slave address
+    if (address != MUXER_ADDRESS) {
+        downstream_i2c_read(active_bus_idx, address, buffer, 1);
+    }
+    else {
+        // return the active channel mask
+        buffer[0] = buses[0].slave_addr;
+        buffer[1] = buses[1].slave_addr;
+        buffer[2] = buses[2].slave_addr;
+    }
+
+}
+
+void i2c_stop_handler(uint8_t length) { 
+    muxer_conversation_in_progress = false;
+}
 
 
 #define SDA0_PIN 12
@@ -240,6 +185,28 @@ void init_bus(int bus_idx, uint8_t sda_pin, uint8_t scl_pin) {
         bus_idx, sda_pin, scl_pin, b->slave_addr);
 }
 
+bool downstream_i2c_write(int bus_idx, uint8_t addr, const uint8_t *data, size_t len) {
+    if (bus_idx < 0 || bus_idx >= NUM_CHANNELS| !buses[bus_idx].initialized) return false;
+    pio_i2c_bus_t *b = &buses[bus_idx];
+    bool ok = true;
+    pio_i2c_start(b->pio, b->sm);
+    ok &= pio_i2c_write_blocking(b->pio, b->sm, addr, data, len);
+    ok &= pio_i2c_read_blocking(b->pio, b->sm, addr, data, len); //ack/nack
+    pio_i2c_stop(b->pio, b->sm);
+    return ok;
+}
+
+bool downstream_i2c_read(int bus_idx, uint8_t addr, uint8_t *data, size_t len) {
+    if (bus_idx < 0 || bus_idx >= NUM_CHANNELS || !buses[bus_idx].initialized) return false;
+    pio_i2c_bus_t *b = &buses[bus_idx];
+    bool ok = true;
+    pio_i2c_start(b->pio, b->sm);
+    ok &= pio_i2c_write_blocking(b->pio, b->sm, (addr << 1) | 1, data, len);
+    ok &= pio_i2c_read_blocking(b->pio, b->sm, addr, data, len);
+    pio_i2c_stop(b->pio, b->sm);
+    return ok;
+}
+
 uint8_t scan_for_slave_address(int bus_idx) {
     if (bus_idx < 0 || bus_idx >= NUM_CHANNELS || !buses[bus_idx].initialized) return 0xFF;
     pio_i2c_bus_t *b = &buses[bus_idx];
@@ -252,27 +219,24 @@ uint8_t scan_for_slave_address(int bus_idx) {
     }
     return 0xFF;
 }
-
-bool downstream_i2c_write(int bus_idx, uint8_t addr, const uint8_t *data, size_t len) {
-    if (bus_idx < 0 || bus_idx >= NUM_CHANNELS| !buses[bus_idx].initialized) return false;
-    pio_i2c_bus_t *b = &buses[bus_idx];
-    bool ok = true;
-    ok &= pio_i2c_start(b->pio, b->sm);
-    ok &= pio_i2c_write_byte(b->pio, b->sm, (addr << 1) | 0);
-    for (size_t i = 0; i < len; i++)
-        ok &= pio_i2c_write_byte(b->pio, b->sm, data[i]);
-    ok &= pio_i2c_stop(b->pio, b->sm);
-    return ok;
-}
-
-bool downstream_i2c_read(int bus_idx, uint8_t addr, uint8_t *data, size_t len) {
-    if (bus_idx < 0 || bus_idx >= NUM_CHANNELS || !buses[bus_idx].initialized) return false;
-    pio_i2c_bus_t *b = &buses[bus_idx];
-    bool ok = true;
-    ok &= pio_i2c_start(b->pio, b->sm);
-    ok &= pio_i2c_write_byte(b->pio, b->sm, (addr << 1) | 1);
-    for (size_t i = 0; i < len; i++)
-        data[i] = pio_i2c_read_byte(b->pio, b->sm, i < (len - 1));
-    ok &= pio_i2c_stop(b->pio, b->sm);
-    return ok;
+/*
+    test the three downstream buses' slaves
+*/
+void test_bus_slaves(){
+    // probe all three buses
+    uint8_t reg = 0x00, val = 0;
+    for (int bus = 0; bus < NUM_CHANNELS; bus++) {
+        int slave_addr = buses[bus].slave_addr;
+        printf("Testing bus %d: Address %d:  \n", bus, slave_addr);
+        if (slave_addr == 0xFF || slave_addr == 0) {
+            printf("  Skipping %d: no devices to test\n", bus);
+            continue;
+        }
+        if (downstream_i2c_write(bus, slave_addr, &reg, 1) &&
+            downstream_i2c_read(bus, slave_addr, &val, 1)) {
+            printf("  Bus %d: device 0x68 responded, val=0x%02X\n", bus, val);
+        } else {
+            printf("  Bus %d: no response or read failed\n", bus);
+        }
+    }
 }

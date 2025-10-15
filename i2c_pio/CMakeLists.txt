@@ -6,7 +6,7 @@ target_include_directories(i2c_pio
 
 target_sources(i2c_pio
     INTERFACE
-    i2c_pio.c
+    pio_i2c.c
 )
 
 target_link_libraries(i2c_pio
