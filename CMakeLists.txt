@@ -37,7 +37,10 @@ pico_sdk_init()
 include_directories(
     ${PROJECT_SOURCE_DIR}/i2c_slave/include
     ${PROJECT_SOURCE_DIR}/i2c_pio/include
+    ${PROJECT_SOURCE_DIR}/i2c_slave_multi/include
 )
+
+add_subdirectory(i2c_slave_multi)
 add_subdirectory(i2c_slave)
 add_subdirectory(i2c_pio)
 add_subdirectory(src)

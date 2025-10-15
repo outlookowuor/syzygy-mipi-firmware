@@ -13,4 +13,7 @@ target_link_libraries(i2c_slave
     INTERFACE
     hardware_i2c
     hardware_irq
-)
+    hardware_pio
+    )
+
+

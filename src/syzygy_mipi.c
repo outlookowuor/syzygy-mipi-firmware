@@ -5,6 +5,8 @@
 #include "i2c_muxer.h"
 #include "gpio_expander.h"
 
+
+
 int main() {
     stdio_init_all();
     printf("SyZyGy MiPi Adaptor Firmware\n");
@@ -18,10 +20,6 @@ int main() {
     setup_i2c_muxer();  // 3 x I2C controllers connected to MIPI devices
     printf("i2c Multiplexer is Ready\n");
 
-    setup_host_i2c(); //slave on i2c1 
-    printf("Host I2C is Ready\n");
-
-    
     while (1) {
         tight_loop_contents();
     }

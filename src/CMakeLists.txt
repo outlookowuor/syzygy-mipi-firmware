@@ -1,5 +1,7 @@
 add_executable(syzygy_mipi)
 
+pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/i2c_multi.pio)
+
 pico_enable_stdio_uart(syzygy_mipi 1)
 pico_enable_stdio_usb(syzygy_mipi 1)
 
@@ -13,5 +15,9 @@ target_sources(syzygy_mipi PRIVATE
         dna_blob.c
         )
 
-target_link_libraries(syzygy_mipi  PRIVATE i2c_slave pico_stdlib hardware_pio hardware_adc hardware_i2c hardware_gpio)
+
+
+target_link_libraries(syzygy_mipi  PRIVATE i2c_pio i2c_slave_multi i2c_slave pico_stdlib hardware_pio hardware_adc hardware_i2c hardware_gpio)
+
+
 pico_add_extra_outputs(syzygy_mipi)
