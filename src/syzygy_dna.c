@@ -153,7 +153,7 @@ static uint8_t read_pmcu_registers(uint16_t addr) {
 	return 0xFF;
 }   
 
-// Attempt to translate AVR code in syzygy reference firmware
+// Translate AVR code in syzygy reference firmware
 // into piconese while referencing the syzygy DNA specification
 // WIP
 static void i2c_slave_handler(i2c_inst_t *i2c, i2c_slave_event_t event) {
