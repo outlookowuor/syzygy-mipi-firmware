@@ -13,6 +13,8 @@ target_sources(syzygy_mipi PRIVATE
         i2c_muxer.c
         gpio_expander.c
         dna_blob.c
+        host_slave_i2cs.c
+        clock_programmer.c
         )
 
 

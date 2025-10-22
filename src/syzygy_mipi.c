@@ -4,7 +4,7 @@
 #include "syzygy_dna.h"
 #include "i2c_muxer.h"
 #include "gpio_expander.h"
-
+#include "host_slave_i2cs.h"
 
 
 int main() {
@@ -20,9 +20,14 @@ int main() {
     setup_i2c_muxer();  // 3 x I2C controllers connected to MIPI devices
     printf("i2c Multiplexer is Ready\n");
 
+    setup_host_i2cs();
+
     while (1) {
         tight_loop_contents();
     }
         
     return 0;
 }
+
+
+
