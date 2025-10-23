@@ -38,7 +38,6 @@ static volatile uint8_t active_channel_mask = 0x01;  // default channel 0
 //010  = Bus 1
 //100  = Bus 2
 
-static void i2c_slave_handler(i2c_inst_t *i2c, i2c_slave_event_t event);
 static void init_muxer_i2c();
 
 bool downstream_i2c_write(int bus_idx, uint8_t addr, const uint8_t *data, size_t len);
@@ -49,8 +48,8 @@ void test_bus_slaves(void);
 static int active_bus_idx = 0; // default bus 0
 
 
-
 int setup_i2c_muxer() {
+    
     // Initialize downstream I2C controllers
     downstream_i2c_init_all();
 
@@ -60,7 +59,35 @@ int setup_i2c_muxer() {
     return 0;
 }
 
+void i2c_muxer_i2c_write_byte(uint8_t data) {
+    active_bus_idx = data & 0x03;  // we are selecting active bus
+}
 
+void i2c_muxer_i2c_stop(uint8_t length) {
+    //nothing to do
+}
+
+void i2c_muxer_i2c_read_byte(uint8_t *buffer) {
+    buffer[0] = active_bus_idx; //simply 
+}
+
+
+void muxed_mipi_i2c_write_byte(uint8_t data) {
+    
+}
+
+void muxed_mipi_i2c_stop(uint8_t length) {
+    //nothing to do
+}
+
+void muxed_mipi_i2c_read_byte(uint8_t *buffer) {
+    buffer[0] = active_bus_idx; //simply 
+
+    
+}
+
+static PIO pio = pio1; //pio0 used for the downstream i2c controllers
+static uint pin = MUXER_I2C_SDA_PIN;
 
 /**
  * Downstream I2C controllers using PIO
@@ -77,43 +104,6 @@ typedef struct {
 
 static pio_i2c_bus_t buses[NUM_CHANNELS] = {0};
 
-
-static PIO pio = pio1; //pio0 used for the downstream i2c controllers
-static uint pin = MUXER_I2C_SDA_PIN;
-static uint8_t buffer[64] = {0};
-
-void i2c_muxer_i2c_write_byte(uint8_t data) {
-
-    //just one byte to select active bus
-    active_bus_idx = data & 0x03; // only 3 channels
-    active_channel_mask = 1 << active_bus_idx;
-
-    // treat as a write to slave address
-    //downstream_i2c_write(active_bus_idx, data, NULL, 0); 
-}
-
-
-void i2c_muxer_i2c_stop(uint8_t length) {
-
-    // treat as a write to slave address
-    //downstream_i2c_write(active_bus_idx, data, NULL, 0); 
-}
-
-void i2c_muxer_i2c_read_byte(uint8_t address) {
-    // treat as a read from slave address
-    if (address != MUXER_ADDRESS) {
-        downstream_i2c_read(active_bus_idx, address, buffer, 1);
-    }
-    else {
-        // return the active channel mask
-        buffer[0] = buses[0].slave_addr;
-    }
-
-}
-
-void i2c_stop_handler(uint8_t length) { 
-
-}
 
 
 #define SDA0_PIN 12
@@ -134,6 +124,7 @@ void downstream_i2c_init_all(void) {
 
     printf("Downstream i2c initialized\n");
 }
+
 
 void init_bus(int bus_idx, uint8_t sda_pin, uint8_t scl_pin) {
     pio_i2c_bus_t *b = &buses[bus_idx];
