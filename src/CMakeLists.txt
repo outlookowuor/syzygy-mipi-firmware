@@ -15,6 +15,7 @@ target_sources(syzygy_mipi PRIVATE
         dna_blob.c
         host_slave_i2cs.c
         clock_programmer.c
+        downstream_i2cs.c
         )
 
 

@@ -2,6 +2,9 @@
 #define _SYZYGY_MIPI_H_
 
 
+
+#define NUM_MIPIS 3
+
 #define MIPI_DEVICE_0 0
 #define MIPI_DEVICE_1 1
 #define MIPI_DEVICE_2 2
