@@ -17,11 +17,7 @@
  *
  */
 
- uint32_t mipi_gpios[3][2] = {
-    { GPIO_18, GPIO_23 },
-    { GPIO_19, GPIO_24 },
-    { GPIO_20, GPIO_25 }
-};
+ uint32_t mipi_gpios[3]= { GPIO_18, GPIO_19, GPIO_20 };
 
 
 static uint8_t gpio_setting;    
@@ -96,7 +92,7 @@ void mirror_gpio(PIO pio, uint sm, uint offset,
 void do_gpio_setting(uint8_t bits){
 
     //Bits[1:0] indicate which MIPI: 0, 1, 2
-    uint32_t gpio = mipi_gpios[bits & 0x3][0];
+    uint32_t gpio = mipi_gpios[bits & 0x3];
     gpio_init(gpio);
 
     uint32_t host_gpio = GPIO_HOST;

@@ -19,7 +19,17 @@ target_sources(syzygy_mipi PRIVATE
         )
 
 
-target_link_libraries(syzygy_mipi  PRIVATE i2c_pio i2c_slave_multi i2c_slave pico_stdlib hardware_pio hardware_adc hardware_i2c hardware_gpio)
+target_link_libraries(syzygy_mipi  PRIVATE 
+        i2c_pio 
+        i2c_slave_multi 
+        i2c_slave 
+        pico_stdlib 
+        hardware_pio 
+        hardware_adc 
+        hardware_i2c 
+        hardware_gpio
+        hardware_clocks
+        )
 
 
 pico_add_extra_outputs(syzygy_mipi)
