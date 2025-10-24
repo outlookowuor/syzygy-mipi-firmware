@@ -16,8 +16,6 @@
  * The host uses MUXED_I2C_ADDRESS to communicate with the 
  * the selected MIPI
  */
-
-
 uint8_t selected_mipi_device = 0;
 static void init_muxer_i2c();
 
@@ -37,6 +35,7 @@ static void init_muxer_i2c() {
     selected_mipi_device = MIPI_DEVICE_0;
 }
 
+/** data: byte written to us by Host */
 void i2c_muxer_i2c_write_byte(uint8_t data) {
     active_bus_idx = data & 0x03;  // we are selecting active bus
     
@@ -47,6 +46,7 @@ void i2c_muxer_i2c_stop(uint8_t length) {
     //nothing to do
 }
 
+/** buffer is pointer to output buffer */
 void i2c_muxer_i2c_read_byte(uint8_t *buffer) {
     buffer[0] = selected_mipi_device; //simply 
 }
