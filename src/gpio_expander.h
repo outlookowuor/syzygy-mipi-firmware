@@ -3,6 +3,15 @@
 
 #define GPIO_EXPANDER_I2C_ADDRESS 0x50
 
+#define GPIO_18 18
+#define GPIO_19 19
+#define GPIO_20 20
+#define GPIO_23 23
+#define GPIO_24 24
+#define GPIO_25 25
+
+#define GPIO_HOST 26
+
 int setup_gpio_expander();
 
 void gpio_expander_i2c_write_byte(uint8_t data);

@@ -17,6 +17,13 @@
  *
  */
 
+ uint32_t mipi_gpios[3][2] = {
+    { GPIO_18, GPIO_23 },
+    { GPIO_19, GPIO_24 },
+    { GPIO_20, GPIO_25 }
+};
+
+
 static uint8_t gpio_setting;    
 void init_pio_mirroring();
 
@@ -85,22 +92,6 @@ void mirror_gpio(PIO pio, uint sm, uint offset,
  * [6:5]: pull-up, pull-down, floating
  * [7:7]: 
  */
-
-
- #define GPIO_18 18
- #define GPIO_19 19
- #define GPIO_20 20
- #define GPIO_23 23
- #define GPIO_24 24
- #define GPIO_25 25
-
- #define GPIO_HOST 26
-
-uint32_t mipi_gpios[3][2] = {
-    { GPIO_18, GPIO_23 },
-    { GPIO_19, GPIO_24 },
-    { GPIO_20, GPIO_25 }
-};
 
 void do_gpio_setting(uint8_t bits){
 
