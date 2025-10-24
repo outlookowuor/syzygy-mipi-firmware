@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
+#include "hardware/pio.h"
 #include "hardware/gpio.h"
 #include "syzygy_mipi.h"
 #include "gpio_expander.h"
+#include "mirror_gpio.pio.h"
 /**
  * GPIO 'expander' is botha selector and programmer for the GPIOs 
  * connected to MIPI devices.
@@ -16,15 +18,14 @@
  */
 
 static uint8_t gpio_setting;    
-void gpio_irq_callback(uint gpio, uint32_t events);
-
+void init_pio_mirroring();
 
 
 static void do_gpio_setting(uint8_t bits);
 
 int setup_gpio_expander() {
     //nothing for now
-
+    init_pio_mirroring();
     return 0;
 }
 
@@ -41,14 +42,48 @@ void gpio_expander_i2c_stop(uint8_t length){
 }
 
 
+static PIO pio = pio0;
+static uint pio_sm  = 0;
+static uint program_offset;
+
+void init_pio_mirroring(){
+    pio_sm = pio_claim_unused_sm(pio, true);
+    program_offset = pio_add_program(pio, &mirror_gpio_program);
+}
+
+void mirror_gpio(PIO pio, uint sm, uint offset,
+                 uint input_pin, uint output_pin,
+                 const pio_program_t *program)
+{
+    pio_sm_set_enabled(pio, sm, false);
+
+    // Keep output aligned with input before starting
+    gpio_put(output_pin, gpio_get(input_pin));
+
+    pio_sm_config c = mirror_gpio_program_get_default_config(offset);
+    sm_config_set_in_pins(&c, input_pin);
+    sm_config_set_set_pins(&c, output_pin, 1);
+    sm_config_set_out_pins(&c, output_pin, 1);
+
+    pio_gpio_init(pio, output_pin);
+    pio_sm_set_consecutive_pindirs(pio, sm, output_pin, 1, true);
+
+    pio_gpio_init(pio, input_pin);
+    gpio_pull_down(input_pin);
+    pio_sm_set_consecutive_pindirs(pio, sm, input_pin, 1, false);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+
 /**
  * data byte is interpreted as follows:
  * 
  * [1:0]: Select "which GPIO"
- * [3:2]: indicates which GPIO to set
+ * [3:2]: indicates whether to set it High/Low or just float
  * [4:4]: input / output
- * [6:5]: trigger interrupt enabled edge
- * [7:7]: swap the GPIOs? 
+ * [6:5]: pull-up, pull-down, floating
+ * [7:7]: 
  */
 
 
@@ -57,12 +92,14 @@ void gpio_expander_i2c_stop(uint8_t length){
  #define GPIO_20 20
  #define GPIO_23 23
  #define GPIO_24 24
- #define GPIO_26 26
+ #define GPIO_25 25
+
+ #define GPIO_HOST 26
 
 uint32_t mipi_gpios[3][2] = {
     { GPIO_18, GPIO_23 },
     { GPIO_19, GPIO_24 },
-    { GPIO_20, GPIO_26 }
+    { GPIO_20, GPIO_25 }
 };
 
 void do_gpio_setting(uint8_t bits){
@@ -71,20 +108,24 @@ void do_gpio_setting(uint8_t bits){
     uint32_t gpio = mipi_gpios[bits & 0x3][0];
     gpio_init(gpio);
 
+    uint32_t host_gpio = GPIO_HOST;
+    gpio_init(host_gpio);
+
+
     //Bits [3:2]
-    uint set_value = 0;
-    uint level_interrupt = 0;
 
     // Bit [4:4]
-    bool is_input = (bits & 0x8 > 0);
+    bool is_input = (bits & 0x8) > 0;
 
     if (!is_input) { // output pin
         gpio_set_dir(gpio, GPIO_OUT);
+        gpio_set_dir(host_gpio, GPIO_IN);
             
+        uint set_value = 0;
         uint set_now = (bits >> 2) & 0x3;
         if (set_now == 0x01) // 0b01 -> Set to 1
             set_value = 1;
-        else if (set_now = 0x2)
+        else if (set_now == 0x2)
             set_value = 0;   // 0b10  -> Set to 0
         else {
             set_now = 0;  // 0b11 -> taken as an edge interrupt
@@ -92,70 +133,22 @@ void do_gpio_setting(uint8_t bits){
         if (set_now>0){
             gpio_put(gpio, set_value);
         }
+
+        mirror_gpio(pio, pio_sm, program_offset, host_gpio, 
+            gpio, &mirror_gpio_program);
     }
 
     if (is_input) {
         gpio_set_dir(gpio, GPIO_IN);
+        gpio_set_dir(host_gpio, GPIO_OUT);
         //Bit[7:7] pull up / pull down  
-        if ((bits & 0x8) > 0)
+        if ((bits & 0x8) > 0){
             gpio_pull_up(gpio);
-        else
+        }
+        else{
             gpio_pull_down(gpio);
-        
-
-        uint32_t event_mask = GPIO_IRQ_EDGE_RISE; 
-
-        // Bits [6:5] - input can be interrupted    
-        int interrupt_type = (bits >> 4) & 0x3;
-        int level_interrupt = 0;
-        if ((bits >> 2) & 0x3 == 0x3)
-            level_interrupt = 1;
-
-        if (!is_input)
-            interrupt_type = 0; //NONE
-
-        else if (interrupt_type & 0x3){
-            //both edges
         }
-        else if (interrupt_type & 0x2) {
-            if (level_interrupt){
-                //on Low
-            }
-            else{
-            //falling edges
-            }
-        }
-        else if (interrupt_type & 0x1) {
-
-            if (level_interrupt){
-                //on High
-            }
-            else {
-                //rising edge
-            }
-        }
-        if (interrupt_type>0){
-            gpio_set_irq_enabled_with_callback( gpio, event_mask,      
-                true, &gpio_irq_callback);
-        }
-    }
-
-
-
-
-}
-
-void interrupt_host(uint32_t events){
-    printf("Host was interrupted with: %d\n",events);
-}
-
-
-void gpio_irq_callback(uint gpio, uint32_t events) {
-    for (int i=0; i<NUM_MIPIS; i++){
-        if (gpio == mipi_gpios[i][0]){
-            if (i = selected_mipi_device){
-                interrupt_host(events);
-            }
-        }
+        mirror_gpio(pio, pio_sm, program_offset, gpio, 
+            host_gpio, &mirror_gpio_program);
     }
 }

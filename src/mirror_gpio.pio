@@ -1,0 +1,17 @@
+.program mirror_gpio
+.side_set 1 optional
+
+;; Read input pin state and reflect it on output pin
+;.wrap_target
+;    in pins, 1         ; Read 1 bit from input base pin(s)
+;    mov x, isr         ; Move the read bit into X register
+;    out pins, 1        ; Output 1 bit (to out_base)
+;.wrap
+
+.wrap_target
+    wait 1 pin 0    ; Wait for input pin (relative to 'in_base') to be HIGH
+    set pins, 1     ; Set output pin (relative to 'set_base') HIGH
+    
+    wait 0 pin 0    ; Wait for input pin to be LOW
+    set pins, 0     ; Set output pin LOW
+.wrap
