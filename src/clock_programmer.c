@@ -116,8 +116,6 @@ uint32_t get_auxsrc_frequency(uint8_t auxsrc) {
     }
 }
 
-bool is_valid_mipi(uint8_t mipi_idx){ return mipi_idx < NUM_MIPIS; }
-
 /**
  * @brief Configures and enables a clock output on a GPIO pin.
  */

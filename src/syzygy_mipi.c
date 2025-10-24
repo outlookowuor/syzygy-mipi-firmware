@@ -5,6 +5,7 @@
 #include "i2c_muxer.h"
 #include "gpio_expander.h"
 #include "host_slave_i2cs.h"
+#include "syzygy_mipi.h"
 
 
 int main() {
@@ -29,5 +30,6 @@ int main() {
     return 0;
 }
 
+bool is_valid_mipi(uint8_t mipi_idx){ return mipi_idx < NUM_MIPIS; }
 
 

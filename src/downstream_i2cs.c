@@ -74,7 +74,7 @@ void downstream_i2c_init_all(void) {
 void init_bus(int bus_idx, uint8_t sda_pin, uint8_t scl_pin) {
     pio_i2c_bus_t *b = &buses[bus_idx];
     
-    b->pio = pio0; // max is 4 buses / pio
+    b->pio = pio; // max is 4 buses / pio
     b->sda_pin = sda_pin;
     b->scl_pin = scl_pin;
     b->offset = pio_add_program(b->pio, &i2c_program);

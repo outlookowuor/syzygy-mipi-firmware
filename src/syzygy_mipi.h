@@ -11,4 +11,6 @@
 
 extern uint8_t selected_mipi_device;  // currently selected MIPI device
 
+bool is_valid_mipi(uint8_t mipi_idx);
+
 #endif
