@@ -42,7 +42,7 @@ uint8_t cmd_buf[3];
 // uint8_t val  = cmd[2];
 
 static uint8_t buf_index = 0;
-
+//master write byte 'data' to us
 void gpio_expander_i2c_write_byte(uint8_t data){
     if (buf_index < 3)
         cmd_buf[buf_index++] = data;
@@ -60,7 +60,7 @@ void gpio_expander_i2c_stop(uint8_t length){
 }
 
 
-static PIO pio = pio0;
+static PIO pio = pio2;  // 3rd PIO for the expander
 static uint pio_sm  = 0;
 static uint program_offset;
 

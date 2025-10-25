@@ -1,7 +1,7 @@
 #ifndef CLOCK_PROGRAMMER_H
 #define CLOCK_PROGRAMMER_H
 
-#define CLOCK_PROGRAMMER_I2C_ADDRESS 0x10
+#define CLOCK_PROGRAMMER_I2C_ADDRESS 0x17
 
 
 void clock_programmer_i2c_write_byte(uint8_t data);

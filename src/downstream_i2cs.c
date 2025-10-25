@@ -16,7 +16,7 @@ void test_bus_slaves(void);
 
 int setup_downstream_i2cs() {  
     downstream_i2c_init_all();
-    test_bus_slaves();
+    // test_bus_slaves();
  
     return 0;
 }
@@ -64,9 +64,9 @@ uint8_t scan_for_slave_address(int bus_idx);
 
 
 void downstream_i2c_init_all(void) {
-    init_bus(0, SDA0_PIN, SCL0_PIN);
-    init_bus(1, SDA1_PIN, SCL1_PIN);
-    init_bus(2, SDA2_PIN, SCL2_PIN);
+    // init_bus(0, SDA0_PIN, SCL0_PIN);
+    // init_bus(1, SDA1_PIN, SCL1_PIN);
+    // init_bus(2, SDA2_PIN, SCL2_PIN);
 
     printf("Downstream i2c initialized\n");
 }   

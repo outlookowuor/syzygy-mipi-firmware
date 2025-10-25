@@ -10,7 +10,7 @@
 #include "downstream_i2cs.h"
 
 
-PIO pio = pio0;
+PIO pio = pio0; // First PIO is for multi-slave i2c
 
 uint8_t buffer[64] = {0};
 uint8_t latest_i2c_address = I2C_MUXER_I2C_ADDRESS;
@@ -39,7 +39,6 @@ void  setup_host_i2cs() {
 
     i2c_multi_set_write_buffer(buffer);
 }
-
 
 #define HOST_SCL_PIN HOST_SDA_PIN + 1
 // Make sure you include the right headers for gpio_*
@@ -122,12 +121,6 @@ void host_i2c_receive_handler(uint8_t data, bool is_address) {
         //i2c writing into a reg
         handle_receive(data);
     }
-    if (is_address){
-        printf("\nAddress: %X, receiving...", data);
-    }
-    else{
-        printf("\nReceived: %X", data);
-    }
 }
 
 void host_i2c_request_handler(uint8_t address) {
@@ -135,11 +128,11 @@ void host_i2c_request_handler(uint8_t address) {
     buffer[0] = 0x70;
     buffer[1] = 0x71;
     buffer[2] = 0x72;
-    printf("\nAddress: %X, request...", address);
+    //printf("\nAddress: %X, request...", address);
 }
 
 void host_i2c_stop_handler(uint8_t length) { 
     // printf("\nTotal bytes: %u", length); 
     handle_stop(length);
-    printf("\nTotal bytes: %u", length); 
+    printf("\n[ %02X ]: Total bytes: %u", latest_i2c_address, length); 
 }
