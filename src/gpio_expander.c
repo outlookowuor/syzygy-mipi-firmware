@@ -59,6 +59,11 @@ void gpio_expander_i2c_stop(uint8_t length){
     buf_index = 0;
 }
 
+// $ i2cset -y 1 0x50 0x01 0 1 i
+// $ i2cset -y 1 0x50 0x01 1 1 i
+// $ i2cset -y 1 0x50 0x03 0 1 i
+// $ i2cset -y 1 0x50 0x03 0 1 i
+// $ i2cset -y 1 0x17 0x00 0 i
 
 static PIO pio = pio2;  // 3rd PIO for the expander
 static uint pio_sm  = 0;
