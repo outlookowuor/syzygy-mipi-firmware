@@ -57,6 +57,14 @@ uint8_t clock_gpios[] = {GPIO_21, GPIO_24, GPIO_25};
 /**
  * @brief Parses the received I2C buffer and executes the command.
  */
+// $ i2cset -y 1 0x17 0x01 0 0 0 0 0 1 i
+// $ i2cset -y 1 0x17 0x01 0 0 0 0 2 0 i
+// $ i2cset -y 1 0x17 0x01 0 0 0 1 0 0 i
+// $ i2cset -y 1 0x17 0x01 0 5 0 1 0 0 i
+// $ i2cset -y 1 0x17 0x01 0 3 0 1 0 0 i
+// $ i2cset -y 1 0x17 0x00 0 i
+// $ i2cset -y 1 0x17 0x01 0 3 0 1 0 0 i
+// $ i2cset -y 1 0x17 0x00 0 i
 static void process_i2c_command() {
     uint8_t command = i2c_rx_buffer[0];
 
