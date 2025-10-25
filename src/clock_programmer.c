@@ -48,7 +48,11 @@ void clock_programmer_i2c_stop(uint8_t length){
 }
 
 
-uint8_t clock_gpios[] = {GPIO_23, GPIO_24, GPIO_25};
+
+//uint8_t clock_gpios[] = {GPIO_23, GPIO_24, GPIO_25};  
+// GPIO_21  is strictly for testing - now 23, 24 & 25 on my package
+#define GPIO_21 21 
+uint8_t clock_gpios[] = {GPIO_21, GPIO_24, GPIO_25};
 
 /**
  * @brief Parses the received I2C buffer and executes the command.
