@@ -25,7 +25,7 @@ static void mirror_gpio(PIO pio, uint sm, uint offset,
                  const pio_program_t *program);
 
 
-static void handle_command(uint8_t *cmd);
+static void process_gpio_command();
 
 
 int setup_gpio_expander() {
@@ -46,16 +46,20 @@ static uint8_t buf_index = 0;
 void gpio_expander_i2c_write_byte(uint8_t data){
     if (buf_index < 3)
         cmd_buf[buf_index++] = data;
-    if (buf_index == 3) {
-        handle_command(cmd_buf);
-        buf_index = 0;
+    if (buf_index >= 3) {
+        //do notthing here - wait for STOP
     }
 }
 void gpio_expander_i2c_read_byte(uint8_t *buffer){
-    buffer[0] = cmd_buf[1];
+    // buffer[0] = cmd_buf[1];
+    buffer[0] = cmd_buf[0]; //just send back last command
+    // printf("GPIO Expander read request, sending back 0x%02X\n", buffer[0]);
 }
 
 void gpio_expander_i2c_stop(uint8_t length){
+    if (buf_index > 0) {
+        process_gpio_command();
+    }
     buf_index = 0;
 }
 
@@ -75,10 +79,10 @@ static uint program_offset;
 #define CMD_SET_PULL    0x03
 
 //simple - for testing purposes
-void handle_command(uint8_t *cmd) {
-    uint8_t code = cmd[0];
-    uint8_t mipi = cmd[1];
-    uint8_t val  = cmd[2];
+void process_gpio_command() {
+    uint8_t code = cmd_buf[0];
+    uint8_t mipi = cmd_buf[1];
+    uint8_t val  = cmd_buf[2];
 
     if (!is_valid_mipi(mipi)){
         printf("Invalid MIPI: %d\n", mipi);
@@ -105,7 +109,7 @@ void handle_command(uint8_t *cmd) {
             gpio_set_dir(gpio, GPIO_IN);
             {
                 bool level = gpio_get(gpio);
-                printf("GPIO %d read = %d\n", gpio, level);
+                printf("GPIO %lu read = %d\n", gpio, level);
             }
 
             mirror_gpio(pio, pio_sm, program_offset, gpio, 
@@ -125,7 +129,8 @@ void handle_command(uint8_t *cmd) {
             break;
 
         default:
-            printf("Unknown command 0x%02X\n", code);
+            buf_index = 0;
+            //printf("Unknown command 0x%02X\n", code);
             break;
     }
 }

@@ -124,11 +124,8 @@ void host_i2c_receive_handler(uint8_t data, bool is_address) {
 }
 
 void host_i2c_request_handler(uint8_t address) {
-    handle_receive(address);
-    buffer[0] = 0x70;
-    buffer[1] = 0x71;
-    buffer[2] = 0x72;
-    //printf("\nAddress: %X, request...", address);
+    handle_request(address);
+    // printf("\nAddress: %X, request...", address);
 }
 
 void host_i2c_stop_handler(uint8_t length) { 

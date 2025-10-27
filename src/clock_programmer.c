@@ -35,7 +35,8 @@ void clock_programmer_i2c_write_byte(uint8_t data){
 
 // Master is requesting data (not used)
 void clock_programmer_i2c_read_byte(uint8_t*  buffer){
-    buffer[0] = i2c_rx_buffer[0]; //just send last command
+    buffer[0] = i2c_rx_buffer[0]; //just send back last command
+    // printf("Clock Programmer read request, sending back 0x%02X\n", buffer[0]);
 }
 
 // Master has sent a STOP condition
@@ -96,7 +97,8 @@ static void process_i2c_command() {
             break;
 
         default:
-            printf("Error: Unknown command 0x%02X\n", command);
+            i2c_rx_index = 0; // Reset index on unknown command
+            // printf("Error: Unknown command 0x%02X\n", command);
             break;
     }
 }

@@ -19,13 +19,17 @@
 int main() {
     stdio_init_all();
 
-    // Set up our UART
-    uart_init(UART_ID, BAUD_RATE);
-    // Set the TX and RX pins by using the function select on the GPIO
-    // Set datasheet for more information on function select
-    gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
-    gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
+    // // Set up our UART
+    // uart_init(UART_ID, BAUD_RATE);
+    // // Set the TX and RX pins by using the function select on the GPIO
+    // // Set datasheet for more information on function select
+    // gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
+    // gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
 
+    for (int i = 0; i < 3; i++) {
+        printf("\nTesing UART\r\n");
+        sleep_ms(1000);
+    }
     printf("SyZyGy MiPi Adaptor Firmware\n");
 
     setup_host_i2cs();

@@ -45,5 +45,10 @@ add_subdirectory(i2c_slave)
 add_subdirectory(i2c_pio)
 add_subdirectory(src)
 
-pico_enable_stdio_usb(${PROJECT_NAME} 0)
+
+set (PICO_DEFAULT_UART 1)
+set(PICO_DEFAULT_UART_TX 4)
+set(PICO_DEFAULT_UART_RX 5)
+
+pico_enable_stdio_usb(${PROJECT_NAME} 1)
 pico_enable_stdio_uart(${PROJECT_NAME} 1)

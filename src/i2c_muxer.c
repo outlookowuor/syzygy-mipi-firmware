@@ -49,4 +49,5 @@ void i2c_muxer_i2c_stop(uint8_t length) {
 /** buffer is pointer to output buffer */
 void i2c_muxer_i2c_read_byte(uint8_t *buffer) {
     buffer[0] = selected_mipi_device; //simply 
+    // printf("I2C Muxer read request, sending back selected MIPI %d\n", buffer[0]);
 }
