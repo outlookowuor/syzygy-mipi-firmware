@@ -10,15 +10,14 @@
 #include "downstream_i2cs.h"
 
 
-PIO pio = pio0; // First PIO is for multi-slave i2c
-
-uint8_t buffer[64] = {0};
-uint8_t latest_i2c_address = I2C_MUXER_I2C_ADDRESS;
+static PIO pio = pio0; // First PIO is for multi-slave i2c
 
 void host_i2c_receive_handler(uint8_t data, bool is_address);
 void host_i2c_request_handler(uint8_t address);
 void host_i2c_stop_handler(uint8_t length);
+void host_i2c_restart_request_handler(uint8_t data);
 
+static uint8_t buffer[64] = {0};
 /**
  * Initialize the 3 i2c slaves
  * - i2c_muxer
@@ -55,20 +54,23 @@ static inline void scl_stretch_end() {
 }
 
 
-/* I2C received a byte: A write from master */
+
+static uint8_t latest_i2c_address = I2C_MUXER_I2C_ADDRESS;
+
+/* I2C received a byte: a write from master */
 void handle_receive(uint8_t data){
     switch (latest_i2c_address) {
     case I2C_MUXER_I2C_ADDRESS: // I2C_MUXER write
-        i2c_muxer_i2c_write_byte(data); 
+        i2c_muxer_i2c_receive(data); 
         break;
     case GPIO_EXPANDER_I2C_ADDRESS: //GPIO Expander
-        gpio_expander_i2c_write_byte(data);
+        gpio_expander_i2c_receive(data);
         break;
     case CLOCK_PROGRAMMER_I2C_ADDRESS: //Clock Programmer
-        clock_programmer_i2c_write_byte(data);
+        clock_programmer_i2c_receive(data);
         break;    
     case MUXED_MIPI_I2C_ADDRESS: //Downstream i2c
-        muxed_mipi_i2c_write_byte(data);
+        bridge_i2c_receive(data);
         break;
     }
 }
@@ -77,22 +79,40 @@ void handle_receive(uint8_t data){
 void handle_request(uint8_t i2c_address){
     switch (i2c_address) {
     case I2C_MUXER_I2C_ADDRESS: // I2C_MUXER write
-        i2c_muxer_i2c_read_byte(buffer);
+        i2c_muxer_i2c_request(buffer);
         break;
     case GPIO_EXPANDER_I2C_ADDRESS: //GPIO Expander
-        gpio_expander_i2c_read_byte(buffer);
+        gpio_expander_i2c_request(buffer);
         break;
     case CLOCK_PROGRAMMER_I2C_ADDRESS://Clock Programmer
-        clock_programmer_i2c_read_byte(buffer);
+        clock_programmer_i2c_request(buffer);
         break;
     case MUXED_MIPI_I2C_ADDRESS: // downstream I2C
-        //this might take some time.. stretch the clock
-        // scl_stretch_begin();
-        muxed_mipi_i2c_read_byte(buffer);
-        // scl_stretch_end();
+        bridge_i2c_request(buffer);
         break;
     }
 }
+
+
+/* I2C received a read request from master without STOP 
+    of previous transaction: reading a byte */
+void handle_restart(uint8_t i2c_address){
+    switch (i2c_address) {
+    case I2C_MUXER_I2C_ADDRESS: // I2C_MUXER write
+        i2c_muxer_i2c_restart_request(buffer);
+        break;
+    case GPIO_EXPANDER_I2C_ADDRESS: //GPIO Expander
+        gpio_expander_i2c_restart_request(buffer);
+        break;
+    case CLOCK_PROGRAMMER_I2C_ADDRESS://Clock Programmer
+        clock_programmer_i2c_restart_request(buffer);
+        break;
+    case MUXED_MIPI_I2C_ADDRESS: // downstream I2C
+        bridge_i2c_restart_request(buffer);
+        break;
+    }
+}
+
 
 /* I2C received a stop request from master */
 void handle_stop(uint8_t length){
@@ -107,29 +127,44 @@ void handle_stop(uint8_t length){
         clock_programmer_i2c_stop(length);
         break;
     case MUXED_MIPI_I2C_ADDRESS: //Clock Programmer
-        muxed_mipi_i2c_stop(length);
+        bridge_i2c_stop(length);
         break;
     }
 }
 
+
+static bool pending_restart = false;  //to monitor restart condition
+
 void host_i2c_receive_handler(uint8_t data, bool is_address) {
     if (is_address){
-        //toggle addresses
         latest_i2c_address = data;
     }
     else{
-        //i2c writing into a reg
         handle_receive(data);
     }
+    pending_restart = true;
 }
 
 void host_i2c_request_handler(uint8_t address) {
-    handle_request(address);
-    // printf("\nAddress: %X, request...", address);
+    if (pending_restart) { 
+        // request arrived before a stop`
+        host_i2c_restart_request_handler(address);
+        pending_restart = false;
+    }
+    else {
+        handle_request(address);
+    }
 }
 
 void host_i2c_stop_handler(uint8_t length) { 
     // printf("\nTotal bytes: %u", length); 
     handle_stop(length);
+    pending_restart = false;
+
     printf("\n[ %02X ]: Total bytes: %u", latest_i2c_address, length); 
+}
+
+void host_i2c_restart_request_handler(uint8_t data){ 
+    //handle start/restart conditions if needed
+    handle_restart(data);
 }

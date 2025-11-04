@@ -24,9 +24,7 @@ static int active_bus_idx; // default bus 0
 
 
 int setup_i2c_muxer() {
-
     init_muxer_i2c();
- 
     return 0;
 }
 
@@ -35,11 +33,14 @@ static void init_muxer_i2c() {
     selected_mipi_device = MIPI_DEVICE_0;
 }
 
-/** data: byte written to us by Host */
-void i2c_muxer_i2c_write_byte(uint8_t data) {
+void i2c_muxer_i2c_receive(uint8_t data) {
     active_bus_idx = data & 0x03;  // we are selecting active bus
-    
     selected_mipi_device = active_bus_idx;
+}
+
+void i2c_muxer_i2c_restart_request(uint8_t *buffer) {
+    //same as normal request
+    i2c_muxer_i2c_request(buffer);
 }
 
 void i2c_muxer_i2c_stop(uint8_t length) {
@@ -47,7 +48,12 @@ void i2c_muxer_i2c_stop(uint8_t length) {
 }
 
 /** buffer is pointer to output buffer */
-void i2c_muxer_i2c_read_byte(uint8_t *buffer) {
+void i2c_muxer_i2c_request(uint8_t *buffer) {
+    buffer[0] = selected_mipi_device; //simply 
+    // printf("I2C Muxer read request, sending back selected MIPI %d\n", buffer[0]);
+}
+
+void i2c_muxer_i2c_write_read_byte(uint8_t *buffer) {
     buffer[0] = selected_mipi_device; //simply 
     // printf("I2C Muxer read request, sending back selected MIPI %d\n", buffer[0]);
 }

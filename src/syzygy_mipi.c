@@ -17,7 +17,9 @@
 #define UART_RX_PIN 5
 
 int main() {
-    stdio_init_all();
+    // stdio_init_all();
+
+    stdio_uart_init_full(uart0, 115200, 16, 17); // Use UART0 with GP16/GP17 at 115200 baud
 
     // // Set up our UART
     // uart_init(UART_ID, BAUD_RATE);
@@ -41,8 +43,7 @@ int main() {
     printf("GPIO Expander is Ready\n");
 
     setup_i2c_muxer();  // 3 x I2C controllers connected to MIPI devices
-    printf("i2c Multiplexer is Ready\n");
-
+    printf("i2c Multiplexer is now Ready\n");
 
     while (1) {
         tight_loop_contents();

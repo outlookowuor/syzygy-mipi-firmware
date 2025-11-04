@@ -14,6 +14,8 @@
 void pio_i2c_start(PIO pio, uint sm);
 void pio_i2c_stop(PIO pio, uint sm);
 void pio_i2c_repstart(PIO pio, uint sm);
+int pio_i2c_write_blocking_nostop(PIO pio, uint sm, uint8_t addr, uint8_t *txbuf, uint len);
+
 
 bool pio_i2c_check_error(PIO pio, uint sm);
 void pio_i2c_resume_after_error(PIO pio, uint sm);

@@ -155,3 +155,25 @@ int pio_i2c_read_blocking(PIO pio, uint sm, uint8_t addr, uint8_t *rxbuf, uint l
     return err;
 }
 
+
+int pio_i2c_write_blocking_nostop(PIO pio, uint sm, uint8_t addr, uint8_t *txbuf, uint len) {
+    int err = 0;
+    pio_i2c_start(pio, sm);
+    pio_i2c_rx_enable(pio, sm, false);
+    pio_i2c_put16(pio, sm, (addr << 2) | 1u);
+    while (len && !pio_i2c_check_error(pio, sm)) {
+        if (!pio_sm_is_tx_fifo_full(pio, sm)) {
+            --len;
+            pio_i2c_put_or_err(pio, sm, (*txbuf++ << PIO_I2C_DATA_LSB) | ((len == 0) << PIO_I2C_FINAL_LSB) | 1u);
+        }
+    }
+    pio_i2c_wait_idle(pio, sm);
+    if (pio_i2c_check_error(pio, sm)) {
+        err = -1;
+        pio_i2c_resume_after_error(pio, sm);
+        pio_i2c_stop(pio, sm);
+    }
+    return err;
+}
+
+

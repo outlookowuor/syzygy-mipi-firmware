@@ -5,7 +5,68 @@
 #include "downstream_i2cs.h"
 #include "pio_i2c.h" 
 
-static PIO pio = pio1; //pio0 used for the downstream i2c controllers
+
+/*
+ * I²C Bridge for Raspberry Pi Pico2
+ * ---------------------------------------------------------
+ * This implementation bridges an upstream I²C master 
+ * to a downstream I²C slave 
+ * 
+ * Features:
+ *   - Upstream side: I²C slave interface (using i2c0)
+ *   - Downstream side: I²C master interface (hardware or PIO-based)
+ *   - Core1 handles downstream operations asynchronously
+ *   - Buffered forwarding with STOP-triggered send
+ *   - Optional clock stretching for downstream reads
+ *
+ * Integration:
+ *   The upstream I²C callbacks should enqueue data into the bridge’s buffers
+ *   and signal events to core1 via semaphore. Core1 performs the downstream
+ *   I²C transactions and prepares response data.
+ */
+
+#include <stdio.h>
+#include <string.h>
+#include "pico/stdlib.h"
+#include "pico/multicore.h"
+#include "hardware/i2c.h"
+#include "hardware/gpio.h"
+#include "pico/sync.h"
+
+// ================= CONFIGURATION =================
+#define UPSTREAM_I2C        i2c0
+#define UPSTREAM_SDA_PIN    4
+#define UPSTREAM_SCL_PIN    5
+#define UPSTREAM_SLAVE_ADDR 0x42
+
+#define DOWNSTREAM_I2C      i2c1
+#define DOWNSTREAM_SDA_PIN  6
+#define DOWNSTREAM_SCL_PIN  7
+#define DOWNSTREAM_TARGET_ADDR 0x50
+
+#define BUF_SZ 256
+#define RESP_SZ 256
+#define CLOCK_STRETCH_FOR_READS 1
+
+// ================= TYPES =================
+typedef struct {
+    uint8_t buf[BUF_SZ];
+    size_t len;
+} i2c_txbuf_t;
+
+typedef struct {
+    uint8_t buf[RESP_SZ];
+    size_t len;
+    bool ready;
+} i2c_rxbuf_t;
+
+// ================= GLOBALS =================
+static i2c_txbuf_t tx_buf;
+static i2c_rxbuf_t rx_buf;
+static volatile bool pending_downstream;
+static volatile bool expect_read;
+static semaphore_t downstream_sem;
+static mutex_t buf_mutex;
 
 
 void downstream_i2c_init_all(void);
@@ -13,6 +74,120 @@ bool downstream_i2c_write(int bus_idx, uint8_t addr, const uint8_t *data, size_t
 bool downstream_i2c_read(int bus_idx, uint8_t addr, uint8_t *data, size_t len);
 void downstream_i2c_init_all(void);
 void test_bus_slaves(void);
+
+
+// ================= CORE1 WORKER =================
+static void core1_worker() {
+    while (true) {
+        sem_acquire_blocking(&downstream_sem);
+        mutex_enter_blocking(&buf_mutex);
+
+        if (!pending_downstream) {
+            mutex_exit(&buf_mutex);
+            continue;
+        }
+
+        size_t wlen = tx_buf.len;
+        uint8_t tmp[BUF_SZ];
+        memcpy(tmp, tx_buf.buf, wlen);
+        bool rd = expect_read;
+        tx_buf.len = 0;
+        pending_downstream = false;
+        mutex_exit(&buf_mutex);
+
+        if (!downstream_i2c_write(selected_mipi_device, DOWNSTREAM_TARGET_ADDR, tmp, wlen)) {
+            printf("[core1] Downstream write failed\n");
+            continue;
+        }
+
+        if (rd) {
+            mutex_enter_blocking(&buf_mutex);
+            rx_buf.len = RESP_SZ;
+            rx_buf.ready = downstream_i2c_read(selected_mipi_device, DOWNSTREAM_TARGET_ADDR, rx_buf.buf, rx_buf.len);
+            expect_read = false;
+            mutex_exit(&buf_mutex);
+        }
+    }
+}
+
+// ================= UPSTREAM CALLBACK HANDLERS =================
+void bridge_on_write(uint8_t byte) {
+    if (tx_buf.len < BUF_SZ)
+        tx_buf.buf[tx_buf.len++] = byte;
+}
+
+void bridge_on_stop() {
+    mutex_enter_blocking(&buf_mutex);
+    pending_downstream = true;
+    expect_read = false;
+    mutex_exit(&buf_mutex);
+    sem_release(&downstream_sem);
+}
+
+void bridge_on_repeated_start(bool next_is_read) {
+    if (next_is_read) {
+        mutex_enter_blocking(&buf_mutex);
+        expect_read = true;
+        pending_downstream = true;
+        mutex_exit(&buf_mutex);
+        sem_release(&downstream_sem);
+    }
+}
+
+uint8_t bridge_on_read() {
+#if CLOCK_STRETCH_FOR_READS
+    gpio_set_dir(UPSTREAM_SCL_PIN, GPIO_OUT);
+    gpio_put(UPSTREAM_SCL_PIN, 0);
+#endif
+
+    uint8_t val = 0xFF;
+    mutex_enter_blocking(&buf_mutex);
+    if (rx_buf.ready && rx_buf.len > 0) {
+        val = rx_buf.buf[RESP_SZ - rx_buf.len];
+        rx_buf.len--;
+        if (rx_buf.len == 0) rx_buf.ready = false;
+    }
+    mutex_exit(&buf_mutex);
+
+#if CLOCK_STRETCH_FOR_READS
+    gpio_set_dir(UPSTREAM_SCL_PIN, GPIO_IN);
+#endif
+    return val;
+}
+
+// ================= INITIALIZATION =================
+void bridge_init() {
+    mutex_init(&buf_mutex);
+    sem_init(&downstream_sem, 0, 1);
+
+    tx_buf.len = 0;
+    rx_buf.len = 0;
+    rx_buf.ready = false;
+    pending_downstream = false;
+    expect_read = false;
+                                                                                                
+    i2c_init(DOWNSTREAM_I2C, 400000);
+    gpio_set_function(DOWNSTREAM_SDA_PIN, GPIO_FUNC_I2C);
+    gpio_set_function(DOWNSTREAM_SCL_PIN, GPIO_FUNC_I2C);
+    gpio_pull_up(DOWNSTREAM_SDA_PIN);
+    gpio_pull_up(DOWNSTREAM_SCL_PIN);                                                                                                                                                                           
+
+    multicore_launch_core1(core1_worker);
+}
+
+/*
+Example usage in your main program:
+
+int main() {
+    stdio_init_all();
+    bridge_init();
+    setup_upstream_slave_callbacks(bridge_on_write, bridge_on_read, bridge_on_stop, bridge_on_repeated_start);
+    while (true) tight_loop_contents();
+}
+*/
+
+
+static PIO pio = pio1; //pio0 used for the downstream i2c controllers
 
 int setup_downstream_i2cs() {  
     downstream_i2c_init_all();
@@ -22,17 +197,23 @@ int setup_downstream_i2cs() {
 }
 
 //handle Host write to downstream
-void muxed_mipi_i2c_write_byte(uint8_t data) {
+void bridge_i2c_receive(uint8_t data) {
     
 }
 
 //Handle Host read from downstream
-void muxed_mipi_i2c_read_byte(uint8_t *buffer) {
+void bridge_i2c_request(uint8_t *buffer) {
+    buffer[0] = selected_mipi_device; //simply 
+}
+
+
+//Handle Host read from downstream
+void bridge_i2c_restart_request(uint8_t *buffer) {
     buffer[0] = selected_mipi_device; //simply 
 }
 
 //Handle Host stop
-void muxed_mipi_i2c_stop(uint8_t length) {
+void bridge_i2c_stop(uint8_t length) {
     //nothing to do
 }
 
@@ -86,40 +267,141 @@ void init_bus(int bus_idx, uint8_t sda_pin, uint8_t scl_pin) {
         bus_idx, sda_pin, scl_pin, b->slave_addr);
 }
 
-bool downstream_i2c_write(int bus_idx, uint8_t addr, const uint8_t *data, size_t len) {
-    if (bus_idx < 0 || bus_idx >= NUM_MIPIS| !buses[bus_idx].initialized) return false;
-    pio_i2c_bus_t *b = &buses[bus_idx];
+
+bool pio_i2c_try_read_byte(PIO pio, uint sm, uint8_t *val) {
+    if (pio_sm_is_rx_fifo_empty(pio, sm))
+        return false; // nothing yet
+    *val = pio_sm_get(pio, sm) >> 24; // same as normal read
+    return true;
+}
+
+
+bool pio_i2c_read_blocking_timeout(PIO pio, uint sm,
+                                   uint8_t addr, uint8_t *rxbuf, size_t len,
+                                   uint timeout_us)
+{
+    absolute_time_t deadline = make_timeout_time_us(timeout_us);
     bool ok = true;
-    pio_i2c_start(b->pio, b->sm);
-    ok &= pio_i2c_write_blocking(b->pio, b->sm, addr, data, len);
-    ok &= pio_i2c_read_blocking(b->pio, b->sm, addr, data, len); //ack/nack
-    pio_i2c_stop(b->pio, b->sm);
+
+    // Start the read
+    pio_i2c_start(pio, sm);
+
+    // Send address + read bit
+    if (!pio_i2c_write_blocking(pio, sm, (addr << 1) | 1, rxbuf, len)) {
+        ok = false;
+        goto abort;
+    }
+
+    for (size_t i = 0; i < len; i++) {
+        // Check timeout each iteration
+        if (absolute_time_diff_us(deadline, get_absolute_time()) < 0) {
+            ok = false;
+            goto abort;
+        }
+
+        // Read one byte (if it hangs, we'll break out on next loop)
+        if (!pio_i2c_try_read_byte(pio, sm, &rxbuf[i])) {
+            // Optional small sleep to yield
+            sleep_us(10);
+        }
+    }
+
+abort:
+    pio_i2c_stop(pio, sm);
+
+    if (!ok) {
+        // Reset the state machine to clear any stuck conditions
+        pio_sm_set_enabled(pio, sm, false);
+        pio_sm_restart(pio, sm);
+        pio_sm_clear_fifos(pio, sm);
+        pio_sm_set_enabled(pio, sm, true);
+    }
+
     return ok;
+}
+
+bool downstream_i2c_write(int bus_idx, uint8_t addr, const uint8_t *data, size_t len) {
+    if (bus_idx < 0 || bus_idx >= NUM_MIPIS || !buses[bus_idx].initialized)
+        return false;
+    pio_i2c_bus_t *b = &buses[bus_idx];
+    return pio_i2c_write_blocking(b->pio, b->sm, addr, (uint8_t *)data, len) == 0;
 }
 
 bool downstream_i2c_read(int bus_idx, uint8_t addr, uint8_t *data, size_t len) {
-    if (bus_idx < 0 || bus_idx >= NUM_MIPIS || !buses[bus_idx].initialized) return false;
+    if (bus_idx < 0 || bus_idx >= NUM_MIPIS || !buses[bus_idx].initialized)
+        return false;
     pio_i2c_bus_t *b = &buses[bus_idx];
-    bool ok = true;
-    pio_i2c_start(b->pio, b->sm);
-    ok &= pio_i2c_write_blocking(b->pio, b->sm, (addr << 1) | 1, data, len);
-    ok &= pio_i2c_read_blocking(b->pio, b->sm, addr, data, len);
-    pio_i2c_stop(b->pio, b->sm);
-    return ok;
+    return pio_i2c_read_blocking(b->pio, b->sm, addr, data, len) == 0;
+}
+
+
+// const int PIO_I2C_DATA_LSB   = 1;
+// const int PIO_I2C_FINAL_LSB  = 9;
+
+// int pio_i2c_write_blocking_nostop(PIO pio, uint sm, uint8_t addr, uint8_t *txbuf, uint len) {
+//     int err = 0;
+//     pio_i2c_start(pio, sm);
+//     pio_i2c_rx_enable(pio, sm, false);
+//     pio_i2c_put16(pio, sm, (addr << 2) | 1u);
+//     while (len && !pio_i2c_check_error(pio, sm)) {
+//         if (!pio_sm_is_tx_fifo_full(pio, sm)) {
+//             --len;
+//             pio_i2c_put_or_err(pio, sm, (*txbuf++ << PIO_I2C_DATA_LSB) | ((len == 0) << PIO_I2C_FINAL_LSB) | 1u);
+//         }
+//     }
+//     pio_i2c_wait_idle(pio, sm);
+//     if (pio_i2c_check_error(pio, sm)) {
+//         err = -1;
+//         pio_i2c_resume_after_error(pio, sm);
+//         pio_i2c_stop(pio, sm);
+//     }
+//     return err;
+// }
+
+bool downstream_i2c_write_read_combined(int bus_idx, uint8_t addr,
+                                        const uint8_t *wdata, size_t wlen,
+                                        uint8_t *rdata, size_t rlen) {
+    pio_i2c_bus_t *b = &buses[bus_idx];
+    if (pio_i2c_write_blocking_nostop(b->pio, b->sm, addr, (uint8_t *)wdata, wlen) < 0)
+        return false;
+    if (pio_i2c_read_blocking(b->pio, b->sm, addr, rdata, rlen) < 0)
+        return false;
+    return true;
+}
+
+
+static bool reserved_addr(uint8_t addr) {
+    return (addr & 0x78) == 0 || (addr & 0x78) == 0x78;
 }
 
 /*
-    Not using for now
+    We'll scan the bus for a slave address
 */
 uint8_t scan_for_slave_address(int bus_idx) {
-    if (bus_idx < 0 || bus_idx >= NUM_MIPIS || !buses[bus_idx].initialized) return 0xFF;
+    if (bus_idx < 0 || bus_idx >= NUM_MIPIS || buses[bus_idx].initialized) 
+        return 0xFF;
+    
+    printf("\nPIO I2C Bus Scan\n");
+    printf("   0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\n");
+    
     pio_i2c_bus_t *b = &buses[bus_idx];
     for (uint8_t addr = 1; addr < 128; addr++) {
-        int dummy = pio_i2c_read_blocking(b->pio, b->sm, addr, NULL, 0);
-        if (dummy >= 0) {   
-            b->slave_addr = addr;
-            return addr;
+        if (addr % 16 == 0) {
+            printf("%02x ", addr);
         }
+        int result;
+        if (reserved_addr(addr))
+            result = -1;
+        else
+            result = pio_i2c_read_blocking(b->pio, b->sm, addr, NULL, 0);
+
+        if (result >= 0) {   
+            b->slave_addr = addr;
+            // return addr;
+        }
+
+        printf(result < 0 ? "." : "@");
+        printf(addr % 16 == 15 ? "\n" : "  ");
     }
     return 0xFF;
 }
