@@ -187,8 +187,6 @@ int main() {
 */
 
 
-static PIO pio = pio1; //pio0 used for the downstream i2c controllers
-
 int setup_downstream_i2cs() {  
     downstream_i2c_init_all();
     // test_bus_slaves();
@@ -244,7 +242,13 @@ void init_bus(int bus_idx, uint8_t sda_pin, uint8_t scl_pin);
 uint8_t scan_for_slave_address(int bus_idx);
 
 
+static PIO pio; //pio0 used for the downstream i2c controllers
+static uint8_t i2c_offset;
+
 void downstream_i2c_init_all(void) {
+    pio = pio1; // Use PIO1 for downstream I2C buses
+    i2c_offset = pio_add_program(pio, &i2c_program);
+
     init_bus(0, SDA0_PIN, SCL0_PIN);
     init_bus(1, SDA1_PIN, SCL1_PIN);
     init_bus(2, SDA2_PIN, SCL2_PIN);
@@ -258,10 +262,13 @@ void init_bus(int bus_idx, uint8_t sda_pin, uint8_t scl_pin) {
     b->pio = pio; // max is 4 buses / pio
     b->sda_pin = sda_pin;
     b->scl_pin = scl_pin;
-    b->offset = pio_add_program(b->pio, &i2c_program);
+    b->offset = i2c_offset;
+    
     b->sm = pio_claim_unused_sm(b->pio, true);
     i2c_program_init(b->pio, b->sm, b->offset, sda_pin, scl_pin);
+
     scan_for_slave_address(bus_idx);
+    
     b->initialized = true;
     printf("Downstream I2C bus %d initialized on pins %d (SDA), %d (SCL) with slave address 0x%02X\n", 
         bus_idx, sda_pin, scl_pin, b->slave_addr);
@@ -358,17 +365,45 @@ bool downstream_i2c_read(int bus_idx, uint8_t addr, uint8_t *data, size_t len) {
 //     return err;
 // }
 
+// bool downstream_i2c_write_read_combined(int bus_idx, uint8_t addr,
+//                                         const uint8_t *wdata, size_t wlen,
+//                                         uint8_t *rdata, size_t rlen) {
+//     pio_i2c_bus_t *b = &buses[bus_idx];
+//     if (pio_i2c_write_blocking_nostop(b->pio, b->sm, addr, (uint8_t *)wdata, wlen) < 0)
+//         return false;
+//     if (pio_i2c_read_blocking(b->pio, b->sm, addr, rdata, rlen) < 0)
+//         return false;
+//     return true;
+// }
+
+
+#define I2C_TIMEOUT_US 200000
+
 bool downstream_i2c_write_read_combined(int bus_idx, uint8_t addr,
                                         const uint8_t *wdata, size_t wlen,
-                                        uint8_t *rdata, size_t rlen) {
+                                        uint8_t *rdata, size_t rmax,
+                                        size_t *rlen)
+{
     pio_i2c_bus_t *b = &buses[bus_idx];
-    if (pio_i2c_write_blocking_nostop(b->pio, b->sm, addr, (uint8_t *)wdata, wlen) < 0)
-        return false;
-    if (pio_i2c_read_blocking(b->pio, b->sm, addr, rdata, rlen) < 0)
-        return false;
-    return true;
-}
+    PIO pio = b->pio; uint sm = b->sm;
+    bool ok = true;
 
+    // if (!i2c_bus_idle(b->sda_pin, b->scl_pin))
+    //     return false;
+
+    pio_i2c_start(pio, sm);
+
+    // ok &= pio_i2c_write_blocking_timeout(pio, sm, (addr << 1) | 0, wdata, wlen, I2C_TIMEOUT_US);
+    // if (!ok) goto stop;
+
+    ok &= pio_i2c_read_blocking_timeout(pio, sm, (addr << 1) | 1, rdata, rmax, I2C_TIMEOUT_US);
+    if (!ok) goto stop;
+
+stop:
+    pio_i2c_stop(pio, sm);
+    *rlen = rmax; // or actual bytes read
+    return ok;
+}
 
 static bool reserved_addr(uint8_t addr) {
     return (addr & 0x78) == 0 || (addr & 0x78) == 0x78;
@@ -381,11 +416,12 @@ uint8_t scan_for_slave_address(int bus_idx) {
     if (bus_idx < 0 || bus_idx >= NUM_MIPIS || buses[bus_idx].initialized) 
         return 0xFF;
     
-    printf("\nPIO I2C Bus Scan\n");
+    printf("\nPIO I2C Bus Scan: bus [ %d ], sm [ %d ] \n", bus_idx, buses[bus_idx].sm);
     printf("   0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\n");
     
     pio_i2c_bus_t *b = &buses[bus_idx];
-    for (uint8_t addr = 1; addr < 128; addr++) {
+    uint8_t rxchar;
+    for (uint8_t addr = 0; addr < 128; addr++) {
         if (addr % 16 == 0) {
             printf("%02x ", addr);
         }
@@ -394,6 +430,8 @@ uint8_t scan_for_slave_address(int bus_idx) {
             result = -1;
         else
             result = pio_i2c_read_blocking(b->pio, b->sm, addr, NULL, 0);
+            // result = pio_i2c_read_blocking_timeout(b->pio, b->sm, 
+            //     addr, &rxchar, 1, 1000);
 
         if (result >= 0) {   
             b->slave_addr = addr;
