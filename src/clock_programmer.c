@@ -23,24 +23,27 @@ void configure_clock_output(uint8_t gpio, uint8_t auxsrc, uint32_t freq_hz);
 void stop_clock_output(uint8_t gpio);
 
 // Master has written data
-void clock_programmer_i2c_receive(uint8_t data){
+bool clock_programmer_i2c_receive(uint8_t data){
     if (i2c_rx_index < MAX_I2C_RX_LEN) {
         // Read byte from RX FIFO
         i2c_rx_buffer[i2c_rx_index++] = data;
     } else {
         // Ignore extra bytes if buffer is full
     }
+
+    return true;
 }
 
 // Master is requesting data (not used)
-void clock_programmer_i2c_request(uint8_t*  buffer){
+bool clock_programmer_i2c_request(uint8_t*  buffer){
     buffer[0] = i2c_rx_buffer[0]; //just send back last command
     // printf("Clock Programmer read request, sending back 0x%02X\n", buffer[0]);
+    return true;
 }
 
-void clock_programmer_i2c_restart_request(uint8_t *buffer){
+bool clock_programmer_i2c_restart_request(uint8_t *buffer){
     //same as normal request
-    clock_programmer_i2c_request(buffer);
+    return clock_programmer_i2c_request(buffer);
 }
 
 // Master has sent a STOP condition

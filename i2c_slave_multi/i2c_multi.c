@@ -1,13 +1,14 @@
 #include "i2c_multi.h"
 
 #include "hardware/irq.h"
+#include "hardware/clocks.h"
 
 #define CLK_DIV 16
 
 static i2c_multi_t *i2c_multi;
 
-static void (*receive_handler)(uint8_t data, bool is_address) = NULL;
-static void (*request_handler)(uint8_t address) = NULL;
+static bool (*receive_handler)(uint8_t data, bool is_address) = NULL;
+static bool (*request_handler)(uint8_t address) = NULL;
 static void (*stop_handler)(uint8_t length) = NULL;
 
 static inline void start_condition_program_init(PIO pio, uint sm, uint offset, uint pin);
@@ -184,6 +185,54 @@ static inline void write_byte_program_init(PIO pio, uint sm, uint offset, uint p
     pio_sm_set_enabled(pio, sm, true);
 }
 
+static inline void short_delay_us(uint32_t us) {
+    uint32_t cycles = us * (clock_get_hz(clk_sys) / 1000000) / 5;  // ~5 cycles per loop
+    while (cycles--) {
+        __asm volatile("nop");
+    }
+}
+
+static inline void reset_read_sm(PIO pio, uint sm, uint offset_read) {
+    // Indicate NACK
+    i2c_multi->status = I2C_IDLE;
+
+    // Small delay to let master finish STOP
+    short_delay_us(5);
+
+    // Reset and restart the read SM
+    pio_sm_set_enabled(i2c_multi->pio, i2c_multi->sm_read, false);
+    pio_sm_clear_fifos(i2c_multi->pio, i2c_multi->sm_read);
+    pio_sm_restart(i2c_multi->pio, i2c_multi->sm_read);
+    pio_sm_exec(i2c_multi->pio, i2c_multi->sm_read,
+                pio_encode_jmp(i2c_multi->offset_read));
+    pio_sm_set_enabled(i2c_multi->pio, i2c_multi->sm_read, true);
+}
+
+static inline void queue_do_nack(PIO pio, uint sm, uint offset_read) {
+    pio_sm_put(pio, sm,
+        (((uint32_t)do_ack_program_instructions[10] + offset_read) << 16) |
+        do_ack_program_instructions[9]);  // set pindirs, 0 (release SDA)
+    pio_sm_put(pio, sm,
+        (((uint32_t)do_ack_program_instructions[1]) << 16) | do_ack_program_instructions[0]);
+    pio_sm_put(pio, sm,
+        (((uint32_t)do_ack_program_instructions[3]) << 16) | do_ack_program_instructions[2]);
+
+    // reset_read_sm(pio, sm, offset_read);
+}
+
+static inline void queue_do_ack(PIO pio, uint sm, uint offset_read) {
+        pio_sm_put(i2c_multi->pio, i2c_multi->sm_read,
+                   (((uint32_t)do_ack_program_instructions[5]) << 16) | do_ack_program_instructions[4]);
+        pio_sm_put(i2c_multi->pio, i2c_multi->sm_read,
+                   (((uint32_t)do_ack_program_instructions[7] + i2c_multi->offset_read) << 16) |
+                       do_ack_program_instructions[6]);
+        pio_sm_put(i2c_multi->pio, i2c_multi->sm_read,
+                   (((uint32_t)do_ack_program_instructions[1]) << 16) | do_ack_program_instructions[0]);
+        pio_sm_put(i2c_multi->pio, i2c_multi->sm_read,
+                   (((uint32_t)do_ack_program_instructions[3]) << 16) | do_ack_program_instructions[2]);
+}
+
+
 static inline void byte_handler_pio(void) {
     uint8_t received = 0;
     bool is_address = false;
@@ -196,13 +245,7 @@ static inline void byte_handler_pio(void) {
         if (!i2c_multi_is_address_enabled(received >> 1)) {
             i2c_multi->status = I2C_IDLE;
             i2c_multi->bytes_count = 0;
-            pio_sm_put(i2c_multi->pio, i2c_multi->sm_read,
-                       (((uint32_t)do_ack_program_instructions[10] + i2c_multi->offset_read) << 16) |
-                           do_ack_program_instructions[9]);
-            pio_sm_put(i2c_multi->pio, i2c_multi->sm_read,
-                       (((uint32_t)do_ack_program_instructions[1]) << 16) | do_ack_program_instructions[0]);
-            pio_sm_put(i2c_multi->pio, i2c_multi->sm_read,
-                       (((uint32_t)do_ack_program_instructions[3]) << 16) | do_ack_program_instructions[2]);
+            queue_do_nack(i2c_multi->pio, i2c_multi->sm_read, i2c_multi->offset_read);
             pio_interrupt_clear(i2c_multi->pio, 0);
             return;
         }
@@ -214,20 +257,21 @@ static inline void byte_handler_pio(void) {
         is_address = true;
     }
     if (i2c_multi->status == I2C_READ) {
-        pio_sm_put(i2c_multi->pio, i2c_multi->sm_read,
-                   (((uint32_t)do_ack_program_instructions[5]) << 16) | do_ack_program_instructions[4]);
-        pio_sm_put(i2c_multi->pio, i2c_multi->sm_read,
-                   (((uint32_t)do_ack_program_instructions[7] + i2c_multi->offset_read) << 16) |
-                       do_ack_program_instructions[6]);
-        pio_sm_put(i2c_multi->pio, i2c_multi->sm_read,
-                   (((uint32_t)do_ack_program_instructions[1]) << 16) | do_ack_program_instructions[0]);
-        pio_sm_put(i2c_multi->pio, i2c_multi->sm_read,
-                   (((uint32_t)do_ack_program_instructions[3]) << 16) | do_ack_program_instructions[2]);
+        
+        bool ok = true;
+
         if (receive_handler) {
             if (is_address) {
-                receive_handler(received >> 1, true);
+                ok = receive_handler(received >> 1, true);
             } else
-                receive_handler(received, false);
+                ok = receive_handler(received, false);
+        }
+        if (ok){
+            queue_do_ack(i2c_multi->pio, i2c_multi->sm_read, i2c_multi->offset_read);
+        } else {
+            queue_do_nack(i2c_multi->pio, i2c_multi->sm_read, i2c_multi->offset_read); 
+            pio_interrupt_clear(i2c_multi->pio, 0);
+            return;
         }
     }
     if (i2c_multi->status == I2C_WRITE && is_address) {

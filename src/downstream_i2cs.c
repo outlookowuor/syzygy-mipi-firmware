@@ -5,7 +5,6 @@
 #include "downstream_i2cs.h"
 #include "pio_i2c.h" 
 
-
 /*
  * I²C Bridge for Raspberry Pi Pico2
  * ---------------------------------------------------------
@@ -50,21 +49,25 @@ int setup_downstream_i2cs() {
 }
 
 //handle Host write to downstream
-void bridge_i2c_receive(uint8_t data) {
-    downstream_i2c_write(selected_mipi_device, &data, 1);
+bool bridge_i2c_receive(uint8_t data) {
+    return downstream_i2c_write(selected_mipi_device, &data, 1);
 }
 
 //Handle Host read from downstream
-void bridge_i2c_request(uint8_t *buffer) {
-    downstream_i2c_read(selected_mipi_device, &buffer, 1);
+bool bridge_i2c_request(uint8_t *buffer) {
+    downstream_i2c_read(selected_mipi_device, buffer, 1);
 
     buffer[0] = selected_mipi_device; //simply , for now
+
+    return true;
 }
 
 
 //Handle Host read from downstream
-void bridge_i2c_restart_request(uint8_t *buffer) {
+bool bridge_i2c_restart_request(uint8_t *buffer) {
     buffer[0] = selected_mipi_device; //simply 
+
+    return true;
 }
 
 //Handle Host stop

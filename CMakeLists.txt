@@ -47,8 +47,8 @@ add_subdirectory(src)
 
 
 set (PICO_DEFAULT_UART 1)
-set(PICO_DEFAULT_UART_TX 4)
-set(PICO_DEFAULT_UART_RX 5)
+set(PICO_DEFAULT_UART_TX 16)
+set(PICO_DEFAULT_UART_RX 17)
 
 pico_enable_stdio_usb(${PROJECT_NAME} 1)
 pico_enable_stdio_uart(${PROJECT_NAME} 1)

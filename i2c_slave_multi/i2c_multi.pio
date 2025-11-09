@@ -54,7 +54,9 @@ bit_loop:
     wait 1 pin 1
     in pins 1
     jmp x-- bit_loop
-    push noblock
+    push noblock ;side 2  Hold down SCL
+hold_scl_release_sda:
+    set pindirs 0b10   ; example: bit for SCL=1 (output), SDA=0 (input) — adjust for your mapping
 do_ack:
     out exec 16
     jmp do_ack

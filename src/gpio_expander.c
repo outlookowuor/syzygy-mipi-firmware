@@ -43,22 +43,27 @@ uint8_t cmd_buf[3];
 
 static uint8_t buf_index = 0;
 //master write byte 'data' to us
-void gpio_expander_i2c_receive(uint8_t data){
+bool gpio_expander_i2c_receive(uint8_t data){
     if (buf_index < 3)
         cmd_buf[buf_index++] = data;
     if (buf_index >= 3) {
         //do notthing here - wait for STOP
     }
+    return true;
 }
-void gpio_expander_i2c_request(uint8_t *buffer){
+bool gpio_expander_i2c_request(uint8_t *buffer){
     // buffer[0] = cmd_buf[1];
     buffer[0] = cmd_buf[0]; //just send back last command
     // printf("GPIO Expander read request, sending back 0x%02X\n", buffer[0]);
+    return true;
 }
 
-void gpio_expander_i2c_restart_request(uint8_t *buffer){
+bool gpio_expander_i2c_restart_request(uint8_t *buffer){
     //same as normal request
     gpio_expander_i2c_request(buffer);
+
+    return true;
+    
 }
 
 void gpio_expander_i2c_stop(uint8_t length){

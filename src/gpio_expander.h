@@ -14,9 +14,9 @@
 
 int setup_gpio_expander();
 
-void gpio_expander_i2c_receive(uint8_t data);
-void gpio_expander_i2c_request(uint8_t* buffer);
-void gpio_expander_i2c_stop(uint8_t length);
-void gpio_expander_i2c_restart_request(uint8_t* buffer);
+    bool gpio_expander_i2c_receive(uint8_t data);
+    bool gpio_expander_i2c_request(uint8_t* buffer);
+    void gpio_expander_i2c_stop(uint8_t length);
+    bool gpio_expander_i2c_restart_request(uint8_t* buffer);
 
 #endif // GPIO_EXPANDER_H
