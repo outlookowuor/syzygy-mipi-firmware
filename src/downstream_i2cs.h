@@ -1,9 +1,6 @@
 #ifndef DOWNSTREAM_H
 #define DOWNSTREAM_H
 
-#define MUXED_MIPI_I2C_ADDRESS 0x72
-
-
 int setup_downstream_i2cs();
 
 void bridge_i2c_receive(uint8_t data);

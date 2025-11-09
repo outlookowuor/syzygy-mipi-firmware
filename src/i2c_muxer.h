@@ -1,7 +1,6 @@
 #ifndef I2C_MUXER_H
 #define I2C_MUXER_H
 
-#define I2C_MUXER_I2C_ADDRESS 0x70
 int setup_i2c_muxer();
 
 void i2c_muxer_i2c_receive(uint8_t data);

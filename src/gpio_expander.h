@@ -1,8 +1,6 @@
 #ifndef GPIO_EXPANDER_H
 #define GPIO_EXPANDER_H
 
-#define GPIO_EXPANDER_I2C_ADDRESS 0x50
-
 #define GPIO_18 18  // MIPI_00
 #define GPIO_19 19  // MIPI_10
 #define GPIO_20 20  // MIPI_20

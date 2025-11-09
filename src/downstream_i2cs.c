@@ -56,7 +56,7 @@ void bridge_i2c_receive(uint8_t data) {
 
 //Handle Host read from downstream
 void bridge_i2c_request(uint8_t *buffer) {
-    downstream_i2c_read(selected_mipi_device, &buffer, 1);
+    downstream_i2c_read(selected_mipi_device, buffer, 1);
 
     buffer[0] = selected_mipi_device; //simply , for now
 }
@@ -99,12 +99,10 @@ void init_bus(int bus_idx, uint8_t sda_pin, uint8_t scl_pin);
 uint8_t scan_for_slave_address(int bus_idx);
 
 
-static PIO pio; //pio0 used for the downstream i2c controllers
 static uint8_t i2c_offset;
 
 void downstream_i2c_init_all(void) {
-    pio = pio1; // Use PIO1 for downstream I2C buses
-    i2c_offset = pio_add_program(pio, &i2c_program);
+    i2c_offset = pio_add_program(pio1, &i2c_program);
 
     init_bus(0, SDA0_PIN, SCL0_PIN);
     init_bus(1, SDA1_PIN, SCL1_PIN);
@@ -116,7 +114,7 @@ void downstream_i2c_init_all(void) {
 void init_bus(int bus_idx, uint8_t sda_pin, uint8_t scl_pin) {
     pio_i2c_bus_t *b = &buses[bus_idx];
     
-    b->pio = pio; // max is 4 buses / pio
+    b->pio = pio1; // max is 4 buses / pio
     b->sda_pin = sda_pin;
     b->scl_pin = scl_pin;
     b->offset = i2c_offset;
@@ -160,7 +158,6 @@ uint8_t scan_for_slave_address(int bus_idx) {
     printf("   0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\n");
     
     pio_i2c_bus_t *b = &buses[bus_idx];
-    uint8_t rxchar;
     for (uint8_t addr = 0; addr < 128; addr++) {
         if (addr % 16 == 0) {
             printf("%02x ", addr);
@@ -170,8 +167,6 @@ uint8_t scan_for_slave_address(int bus_idx) {
             result = -1;
         else
             result = pio_i2c_read_blocking(b->pio, b->sm, addr, NULL, 0);
-            // result = pio_i2c_read_blocking_timeout(b->pio, b->sm, 
-            //     addr, &rxchar, 1, 1000);
 
         if (result >= 0) {   
             b->slave_addr = addr;
