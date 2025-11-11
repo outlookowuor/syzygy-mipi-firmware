@@ -5,13 +5,14 @@ This repository contains the firmware and gateware necessary to operate the Tiny
 
 ## Table of Contents
 
-- [Features](#features)CoreCore Components
+- [Features](#features)
 - [Hardware Requirements](#hardware-requirements)
 - [Toolchain Setup](#toolchain-setup)
 - [Building the Firmware](#building-the-firmware)
 - [Flashing the Board](#flashing-the-board)
 - [Module Overview](#module-overview)
-  - Core Components
+  - Main Menu
+  - Syzygy DNA
   - GPIO Expander
   - Clock Programmer
   - I²C Muxer & I²C Bridging
