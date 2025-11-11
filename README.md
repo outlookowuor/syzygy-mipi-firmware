@@ -120,8 +120,8 @@ This module implements a simply menu accessible through UART on GPIO pins 16/17.
 The interactive menu allows the user to:
 - set i2c addresses for the 
     - i2c-multiplexer
-    - i2c Bridge, 
-    - GPIO expander, and 
+    - i2c Bridge
+    - GPIO expander
     - Clock Generator
 - view the settings for the above
 - save the settings to flash
