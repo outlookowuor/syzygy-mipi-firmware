@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
 #include "hardware/adc.h"
@@ -6,7 +7,6 @@
 #include "i2c_fifo.h"
 #include "i2c_slave.h"
 #include "dna_blob.h"
-
 
 
 #define GA_VALID_BUFFER_MV 50  // allow for +/-50mV from each GA value to account for noise, etc.
@@ -242,4 +242,131 @@ int setup_syzygy_dna() {
     init_dna_i2c(syzygy_channel_address);
 
     return 0;
+}
+
+
+/// Computes the CRC-16/CCITT checksum using parallel computation without tables.
+/// https://en.wikipedia.org/wiki/Computation_of_cyclic_redundancy_checks
+///
+/// Polynomial: 0x1021 (x^16 + x^12 + x^5 + x^0)
+/// Initialization: 0xFFFF
+/// Data “shifted” MSB first
+///
+/// \returns Computed 16-bit CRC.
+
+static uint16_t crc16_usb(const uint8_t *data, size_t len) {
+    uint16_t crc = 0xffff;
+    short x;
+
+
+    while (len--) {
+        x = (crc>>8) ^ *data++;
+        x ^= x>>4;
+        crc = (crc<<8) ^ (x<<12) ^ (x<<5) ^ (x);
+        crc &= 0xffff;
+    }
+    return(crc);
+}
+
+
+#pragma pack(push, 1)  // ensure no padding
+
+typedef struct {
+    uint16_t dna_full_data_length;
+    uint16_t dna_header_length;
+
+    uint8_t  dna_major_version;
+    uint8_t  dna_minor_version;
+    uint8_t  req_dna_major_version;
+    uint8_t  req_dna_minor_version;
+
+    uint16_t max_5v_load_mA;
+    uint16_t max_3v3_load_mA;
+    uint16_t max_vio_load_mA;
+
+    uint16_t attribute_flags;
+
+    uint16_t min_vio_10mV;
+    uint16_t max_vio_10mV;
+
+    uint16_t min_vio_extra[4];   // reserved fields (often 0)
+    uint16_t max_vio_extra[4];
+
+    uint8_t  manufacturer_name_length;
+    uint8_t  product_name_length;
+    uint8_t  product_model_length;
+    uint8_t  product_version_length;
+    uint8_t  serial_number_length;
+
+    uint8_t  reserved;
+
+    uint8_t  crc_msb;
+    uint8_t  crc_lsb;
+} syzygy_dna_header_t;
+
+#pragma pack(pop)
+
+void print_syzygy_dna() {
+    const uint8_t *data = dna_blob;
+    size_t len = dna_blob_len;
+
+    if (len < sizeof(syzygy_dna_header_t)) {
+        fprintf(stderr, "Error: buffer too small (%zu bytes)\n", len);
+        return;
+    }
+
+    const syzygy_dna_header_t *hdr = (const syzygy_dna_header_t *)data;
+    const uint8_t *p = data + sizeof(syzygy_dna_header_t);
+
+    printf("=== SYZYGY DNA Record ===\n");
+    printf("Full data length:       %u bytes\n", hdr->dna_full_data_length);
+    printf("Header length:          %u bytes\n", hdr->dna_header_length);
+    printf("DNA version:            %u.%u\n", hdr->dna_major_version, hdr->dna_minor_version);
+    printf("Required version:       %u.%u\n", hdr->req_dna_major_version, hdr->req_dna_minor_version);
+
+    printf("\n--- Electrical specs ---\n");
+    printf("Max 5V load:            %u mA\n", hdr->max_5v_load_mA);
+    printf("Max 3.3V load:          %u mA\n", hdr->max_3v3_load_mA);
+    printf("Max VIO load:           %u mA\n", hdr->max_vio_load_mA);
+    printf("Attribute flags:        0x%04X\n", hdr->attribute_flags);
+    printf("VIO range:              %.2f – %.2f V\n",
+           hdr->min_vio_10mV / 100.0, hdr->max_vio_10mV / 100.0);
+
+    printf("\n--- String lengths ---\n");
+    printf("Manufacturer:           %u\n", hdr->manufacturer_name_length);
+    printf("Product name:           %u\n", hdr->product_name_length);
+    printf("Product model:          %u\n", hdr->product_model_length);
+    printf("Product version:        %u\n", hdr->product_version_length);
+    printf("Serial number:          %u\n", hdr->serial_number_length);
+
+    printf("\n--- CRC ---\n");
+    uint16_t stored_crc = ((uint16_t)hdr->crc_msb << 8) | hdr->crc_lsb;
+    uint16_t computed_crc = crc16_usb(data, len - 2); // exclude CRC bytes
+    printf("Stored CRC:             0x%04X\n", stored_crc);
+    printf("Computed CRC:           0x%04X  (%s)\n",
+           computed_crc, (stored_crc == computed_crc) ? "OK" : "FAIL");
+
+    // Now extract variable-length strings
+    printf("\n--- Strings ---\n");
+    char buf[256];
+
+    #define COPY_STRING(label, length_field) \
+        memset(buf, 0, sizeof(buf)); \
+        if ((p + hdr->length_field) > (data + len)) { \
+            printf("%-22s <invalid length>\n", label); \
+            return; \
+        } \
+        memcpy(buf, p, hdr->length_field); \
+        printf("%-22s %s\n", label, buf); \
+        p += hdr->length_field;
+
+    COPY_STRING("Manufacturer:", manufacturer_name_length);
+    COPY_STRING("Product name:", product_name_length);
+    COPY_STRING("Product model:", product_model_length);
+    COPY_STRING("Product version:", product_version_length);
+    COPY_STRING("Serial number:", serial_number_length);
+
+    #undef COPY_STRING
+
+    printf("=========================\n");
 }

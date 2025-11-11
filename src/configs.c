@@ -4,6 +4,7 @@
 #include "hardware/flash.h"
 #include "hardware/sync.h"
 #include "syzygy_mipi.h"
+#include "syzygy_dna.h"
 
 #include "configs.h"
 
@@ -11,13 +12,22 @@
 #define CONFIG_FLASH_OFFSET  (PICO_FLASH_SIZE_BYTES - 4096)
 
 
+bool config_modified = false;
+
 syzygy_mipi_config_t config = {0};
 
+
 static void save_config(void) {
+    if (config_modified == false) {
+        printf("No changes to save.\n");
+        return; //no changes, save flash writes
+    }
+
     uint32_t ints = save_and_disable_interrupts();
     flash_range_erase(CONFIG_FLASH_OFFSET, FLASH_SECTOR_SIZE);
     flash_range_program(CONFIG_FLASH_OFFSET, (uint8_t *)&config, sizeof(config));
     restore_interrupts(ints);
+    config_modified = false;
 }
 
 static bool load_config(void) {
@@ -57,7 +67,8 @@ void init_configs(){
 #define MENU_BRIDGE '3'
 #define MENU_GPIO_EXPANDER '4'
 #define MENU_CLOCK_PROGRAMMER '5'
-#define MENU_SAVE '6'
+#define MENU_SYZGY_DNA '6'
+#define MENU_SAVE '7'
 
 
 
@@ -68,6 +79,7 @@ void show_menu(void) {
     printf("%c. Set address for selected MIPI device\n", MENU_BRIDGE);
     printf("%c. Set address for gpio expander\n", MENU_GPIO_EXPANDER);
     printf("%c. Set address for clock generator\n", MENU_CLOCK_PROGRAMMER);
+    printf("%c. Show SYZYGY DNA\n", MENU_SYZGY_DNA);
     printf("%c. Save address settings\n", MENU_SAVE);
     printf("q. Quit\n");
     printf("> ");
@@ -103,6 +115,10 @@ void set_address(char menu_option){
             prompt = BRIDGE_PROMPT;
             p_addr = &config.bridge_addr;
             break;
+        case MENU_SYZGY_DNA:
+            printf("SYZYGY DNA:\n");
+            print_syzygy_dna();
+            return;
         default:
             printf("Invalid address!\n");
             return;
@@ -115,8 +131,13 @@ void set_address(char menu_option){
         return;
     }
 
-    *p_addr = new_addr;
+    if (*p_addr == new_addr) {
+        printf("%s address is already 0x%02X\n", prompt, new_addr);
+        return;
+    }
 
+    config_modified = true;
+    *p_addr = new_addr;
     printf("Updated %s address to 0x%02X\n", prompt, new_addr);
 }
 
@@ -137,7 +158,10 @@ void config_menu_loop(){
             case MENU_CLOCK_PROGRAMMER:  
                 set_address(choice); 
                 break;
-            case '6': 
+            case MENU_SYZGY_DNA:
+                print_syzygy_dna();
+                break;
+            case MENU_SAVE: 
                 printf("Saving (not implemented)... rebooting.\n");
                 save_config();
                 break;
