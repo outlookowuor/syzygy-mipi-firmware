@@ -39,7 +39,6 @@ int main() {
     setup_i2c_muxer();  // 3 x I2C controllers connected to MIPI devices
     printf("i2c Multiplexer is now Ready\n");
 
-
     while (1) {
         // tight_loop_contents();
         config_menu_loop();

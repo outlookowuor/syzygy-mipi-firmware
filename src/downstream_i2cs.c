@@ -49,16 +49,16 @@ int setup_downstream_i2cs() {
     return 0;
 }
 
-//handle Host write to downstream
+//handle Host write to downstream - byte at a time
 void bridge_i2c_receive(uint8_t data) {
     downstream_i2c_write(selected_mipi_device, &data, 1);
 }
 
-//Handle Host read from downstream
+//Handle Host read from downstream - byte at a time
 void bridge_i2c_request(uint8_t *buffer) {
-    downstream_i2c_read(selected_mipi_device, buffer, 1);
-
-    buffer[0] = selected_mipi_device; //simply , for now
+    bool success = downstream_i2c_read(selected_mipi_device, buffer, 1);
+    if (!success)
+        buffer[0] = 0xFF;//simply , for now
 }
 
 

@@ -96,6 +96,7 @@ static void pio_i2c_wait_idle(PIO pio, uint sm) {
         tight_loop_contents();
 }
 
+
 int pio_i2c_write_blocking(PIO pio, uint sm, uint8_t addr, uint8_t *txbuf, uint len) {
     int err = 0;
     pio_i2c_start(pio, sm);
