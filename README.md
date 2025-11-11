@@ -22,9 +22,13 @@ This repository contains the firmware and gateware necessary to operate the Tiny
 
 The primary features and current development goals include:
 
-- **MIPI CSI-2 Reception:** Implementing a robust receiver (D-PHY layer) to capture raw image data from a connected camera module.
 
 - **SYZYGY Interoperability:** Providing the necessary logic to communicate with a host FPGA carrier board over the **SYZYGY high-speed interface.**
+
+
+- **SYZYGY to 3x MIPI devices:** Provide multiplexed access to 3 MIPI devices via the syzygy connector. This includes:
+-- Access to 2x MIPI device GPIOs (one clock programmable)
+-- I2C connectivity
 
 - **Hardware Base:** Specifically targets the adapter board based on the **RP2350b** chip.
 
